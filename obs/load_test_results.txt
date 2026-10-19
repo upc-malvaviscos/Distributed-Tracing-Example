@@ -1,0 +1,35 @@
+k6 run /scripts/load_test.js (grafana/k6:1.8.2)
+Stages: 30s ramp 0->30 VUs, 2m sustained at 15 VUs (reduced from the 1m/30m proposal in PRACTICA.md for practicality; same methodology)
+Target: http://nginx/api/v1/kennels (3 GET requests per iteration: id=0,1,2)
+
+  █ TOTAL RESULTS
+
+    HTTP
+    http_req_duration..............: avg=158.45ms min=101.48ms med=127.79ms max=307.36ms p(90)=212.51ms p(95)=216.68ms
+      { expected_response:true }...: avg=158.45ms min=101.48ms med=127.79ms max=307.36ms p(90)=212.51ms p(95)=216.68ms
+    http_req_failed................: 0.00%  0 out of 6564
+    http_reqs......................: 6564   43.279603/s
+
+    EXECUTION
+    iteration_duration.............: avg=1.47s    min=1.3s     med=1.45s    max=1.76s    p(90)=1.6s     p(95)=1.62s
+    iterations.....................: 2188   14.426534/s
+    vus............................: 6      min=1         max=30
+    vus_max........................: 30     min=30        max=30
+
+    NETWORK
+    data_received..................: 2.2 MB 14 kB/s
+    data_sent......................: 525 kB 3.5 kB/s
+
+--- Métricas internas (Tempo -> Prometheus, service graph) tras el test ---
+
+traces_service_graph_request_total{client="kennels", server="dogs"}            = 13128
+traces_service_graph_request_failed_total{client="kennels", server="dogs"}     = 9262
+  -> ratio de fallo interno kennels->dogs = 9262 / 13128 = 70.55%
+
+traces_service_graph_request_total{client="kennels", server="inventory"}       = 6564
+  -> sin fallos registrados (inventory nunca falla)
+
+p95 server-side latency (histogram_quantile 0.95, traces_service_graph_request_server_seconds):
+  inventory = 194.6 ms
+  dogs      = 181.5 ms
+  kennels   = 379.2 ms   (~= inventory p95 + dogs p95, es decir, prácticamente la suma, no el máximo)
