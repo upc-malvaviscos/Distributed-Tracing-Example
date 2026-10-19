@@ -2,6 +2,11 @@ const express = require('express');
 const data = require('./data');
 const app = express();
 
+// Nginx forwards the full API path. Keep this before the catch-all handler.
+app.get('/api/v1/kennels/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
 app.use('/', async (req, res) => {
   const id = req.query.id;
   const name = await data.getKennelName(id);
