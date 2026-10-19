@@ -14,7 +14,7 @@ Este laboratorio practica la observabilidad distribuida con el stack `LGTM` de G
 | Captura de la traza de error de `dogs` (punto 2.12, entregable) | ✅ Entregado | Ver capturas más abajo |
 | Load testing con K6 (puntos 3.1-3.3) | ✅ Completo | Ver análisis y datos más abajo |
 | Reto 1 — `node_exporter` + dashboard "Node Exporter Full" | ⏳ Pendiente | — |
-| Reto 2 — `blackbox-exporter` + dashboard de sondas HTTP | ⏳ Pendiente | — |
+| Reto 2 — `blackbox-exporter` + dashboard de sondas HTTP | ✅ Completo | Ver detalle más abajo |
 
 ## Instrumentación y traza de error (puntos 2.9 – 2.12)
 
@@ -55,7 +55,21 @@ Comparando la latencia p95 por servicio (`histogram_quantile(0.95, traces_servic
 
 La p95 de `kennels` (379 ms) es casi exactamente la **suma** de las p95 de `inventory` y `dogs` (195 + 181 ≈ 376 ms), no el máximo de ambas. El motivo está en `services/kennels/src/data.js`: `kennels` primero hace `await getInventory(id)` y **solo después** lanza en paralelo (`Promise.all`) las llamadas a `getDogDetails` por cada perro. Como la llamada a `inventory` bloquea el inicio de las llamadas a `dogs`, la latencia total es aproximadamente aditiva en vez de estar acotada por el servicio más lento. **El cuello de botella es esta orquestación secuencial en `kennels`**, no el rendimiento individual de `dogs` o `inventory` — lanzar ambas llamadas en paralelo reduciría la p95 de ~380 ms a ~195 ms.
 
+## Reto 2 — blackbox-exporter y sondas HTTP
+
+Se añadió `blackbox-exporter` (`quay.io/prometheus/blackbox-exporter:v0.27.0`) al stack de observabilidad (`docker-compose.obs.yml`, red `kennels_net`), con el módulo `http_2xx` definido en `obs/blackbox.yml` (GET, timeout 5s, redirects habilitados). Para que Prometheus pudiera scrapearlo hizo falta crear `obs/prometheus.yml` (hasta entonces Prometheus corría sin `scrape_configs` propios, solo con `remote_write` desde Tempo) y montarlo en el servicio `prometheus`, con el job `blackbox` apuntando, vía *relabeling*, a:
+
+- `http://nginx/api/v1/kennels/health` (nuevo endpoint añadido en `services/kennels/src/index.js`, antes del handler catch-all)
+- `https://upcschool.upc.edu`
+
+También fue necesario corregir `nginx/conf.d/default.conf` (`proxy_pass http://kennels;` en vez de `http://kennels/$uri$is_args$args;`), ya que la versión anterior introducía una doble barra en la ruta reenviada — pasaba desapercibido porque antes `kennels` solo tenía un handler catch-all (`app.use('/')`) que ignoraba el path, pero rompía el *routing* exacto que necesita `/api/v1/kennels/health`.
+
+**Validación realizada** (reproducida de forma independiente antes de fusionar la PR): ambos targets en `health: "up"` y `probe_success: 1` en Prometheus; al parar el contenedor `kennels` la sonda local pasa a `probe_success: 0` mientras `upcschool.upc.edu` se mantiene en `1` (prueba de que la sonda realmente depende de la disponibilidad de `kennels`, no es un falso positivo); al reiniciar `kennels` la sonda local vuelve a `1`.
+
+Dashboard importado (ID [16124](https://grafana.com/grafana/dashboards/16124-blackbox-exporter/)) con ambos endpoints disponibles:
+
+![Dashboard de Blackbox Exporter con ambos targets Up](./img/blackbox-dashboard.jpg)
+
 ## Pendiente
 
-- **Reto 1**: desplegar `node_exporter` (o el exporter integrado de Alloy) y el dashboard "Node Exporter Full" (ID 1860), con captura de pantalla.
-- **Reto 2**: desplegar `blackbox-exporter` monitorizando `http://nginx/api/v1/kennels/health` y `https://upcschool.upc.edu`, con su dashboard de sondas y captura de pantalla.
+- **Reto 1**: desplegar `node_exporter` (o el exporter integrado de Alloy) y el dashboard "Node Exporter Full" (ID 1860), con captura de pantalla. Queda para quien lo implemente.
