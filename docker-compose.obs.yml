@@ -53,10 +53,21 @@ services:
   prometheus:
     image: prom/prometheus:v3.13.4
     restart: unless-stopped
+    volumes:
+      - ./obs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
       - "--web.enable-remote-write-receiver"
       - "--enable-feature=exemplar-storage"
+    networks:
+      - kennels_net
+  blackbox-exporter:
+    image: quay.io/prometheus/blackbox-exporter:v0.27.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+    volumes:
+      - ./obs/blackbox.yml:/etc/blackbox/blackbox.yml:ro
     networks:
       - kennels_net
