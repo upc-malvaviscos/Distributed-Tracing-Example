@@ -36,7 +36,7 @@ Configuration files:
 ### Validation
 
 ```bash
-# All containers (alloy, grafana, tempo, prometheus) must be "running"
+# All containers (alloy, grafana, tempo, prometheus, blackbox-exporter) must be "running"
 docker compose -f docker-compose.obs.yml ps -a
 
 # The application answers through nginx
@@ -45,6 +45,37 @@ curl "http://localhost:8080/api/v1/kennels?id=0"
 ```
 
 In Grafana go to *Connections → Data sources*: `Prometheus` and `Tempo` should be listed, and Tempo's *Additional settings → Service graph* should point to `Prometheus`.
+
+### OpenTelemetry instrumentation (issue #2)
+
+`kennels`, `dogs` and `inventory` are auto-instrumented with OpenTelemetry: each
+service's `package.json` adds `@opentelemetry/api` and
+`@opentelemetry/auto-instrumentations-node`, and its `start` script loads the
+instrumentation before the app code:
+
+```json
+"start": "node --require @opentelemetry/auto-instrumentations-node/register src/index.js"
+```
+
+No code changes were needed — Express, HTTP and Axios are instrumented
+automatically. Each service container gets these environment variables in
+`docker-compose.yml`:
+
+```yaml
+- OTEL_SERVICE_NAME=<service name>
+- OTEL_TRACES_EXPORTER=otlp
+- OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4317
+- OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+- OTEL_EXPORTER_OTLP_INSECURE=true
+```
+
+To see the traces: generate some traffic (`curl` the `kennels` endpoint a few
+times), then in Grafana go to *Explore → Tempo* and either browse the
+**Service Graph** (shows `kennels → dogs` and `kennels → inventory`) or search
+with TraceQL, e.g. `{resource.service.name="kennels" && status=error}` to find
+a trace where the `dogs` service's injected random failure
+(`services/dogs/src/index.js`, ~70% of requests return `500`) propagates up
+through `kennels`.
 
 ### HTTP availability probes (issue #4)
 
