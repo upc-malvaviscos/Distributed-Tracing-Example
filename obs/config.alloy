@@ -1,0 +1,39 @@
+livedebugging {
+  enabled = true
+}
+
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+// Receives OTLP traces from the instrumented services (kennels, dogs, inventory)
+otelcol.receiver.otlp "receiver" {
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+
+  output {
+    traces  = [otelcol.processor.batch.pipeline.input]
+  }
+}
+
+otelcol.processor.batch "pipeline" {
+  output {
+    traces  = [otelcol.exporter.otlp.tempo.input]
+  }
+}
+
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo:4317"
+    tls {
+      insecure = true
+      insecure_skip_verify = true
+    }
+  }
+}

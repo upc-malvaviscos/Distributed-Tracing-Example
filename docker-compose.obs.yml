@@ -1,0 +1,62 @@
+name: kennels_stack
+volumes:
+  grafana_data: {}
+  tempo_data: {}
+networks:
+  kennels_net:
+    external: true
+services:
+  alloy:
+    image: grafana/alloy:v1.9.1
+    restart: unless-stopped
+    volumes:
+      - ./obs/config.alloy:/etc/alloy/config.alloy
+    command:
+    - run
+    - /etc/alloy/config.alloy
+    - --server.http.listen-addr=0.0.0.0:12345
+    ports:
+      - 12345:12345
+    depends_on:
+      - tempo
+    networks:
+      - kennels_net
+  grafana:
+    image: grafana/grafana:13.2.4
+    restart: unless-stopped
+    ports:
+      - 3000:3000
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./obs/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor traceQLStreaming metricsSummary
+    depends_on:
+      - prometheus
+      - tempo
+    networks:
+      - kennels_net
+  tempo:
+    image: grafana/tempo:3.1.0
+    restart: unless-stopped
+    command: [ "-config.file=/etc/tempo.yaml" ]
+    volumes:
+      - ./obs/tempo.yaml:/etc/tempo.yaml
+      - tempo_data:/var/tempo
+    depends_on:
+      - prometheus
+    networks:
+      - kennels_net
+  prometheus:
+    image: prom/prometheus:v3.13.4
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-remote-write-receiver"
+      - "--enable-feature=exemplar-storage"
+    networks:
+      - kennels_net
