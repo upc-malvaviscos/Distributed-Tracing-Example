@@ -86,6 +86,7 @@ services:
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
-      - /:/rootfs:ro,rslave
+      # No "rslave": Docker Desktop's VM doesn't mount / as shared/slave
+      - /:/rootfs:ro
     networks:
       - kennels_net
