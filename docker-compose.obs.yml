@@ -71,3 +71,22 @@ services:
       - ./obs/blackbox.yml:/etc/blackbox/blackbox.yml:ro
     networks:
       - kennels_net
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    restart: unless-stopped
+    # Reported as "nodename" in the Node Exporter Full dashboard
+    hostname: kennels-host
+    # See host processes; host /proc, /sys and / are mounted read-only
+    pid: host
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      # No "rslave": Docker Desktop's VM doesn't mount / as shared/slave
+      - /:/rootfs:ro
+    networks:
+      - kennels_net
