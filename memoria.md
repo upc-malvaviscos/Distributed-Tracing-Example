@@ -13,7 +13,7 @@ Este laboratorio practica la observabilidad distribuida con el stack `LGTM` de G
 | Instrumentación OpenTelemetry (`kennels` / `dogs` / `inventory`) | ✅ Completo | Autoinstrumentación con `@opentelemetry/auto-instrumentations-node`; trazas visibles en Tempo; service graph muestra `kennels → dogs` y `kennels → inventory` |
 | Captura de la traza de error de `dogs` (punto 2.12, entregable) | ✅ Entregado | Ver capturas más abajo |
 | Load testing con K6 (puntos 3.1-3.3) | ✅ Completo | Ver análisis y datos más abajo |
-| Reto 1 — `node_exporter` + dashboard "Node Exporter Full" | 🔄 Configurado, pendiente de captura | Ver detalle más abajo |
+| Reto 1 — `node_exporter` + dashboard "Node Exporter Full" | ✅ Completo | Ver detalle más abajo |
 | Reto 2 — `blackbox-exporter` + dashboard de sondas HTTP | ✅ Completo | Ver detalle más abajo |
 
 ## Instrumentación y traza de error (puntos 2.9 – 2.12)
@@ -77,7 +77,19 @@ La p95 de `kennels` (379 ms) es casi exactamente la **suma** de las p95 de `inve
 
 **Dashboard**: importado desde *Dashboards → New → Import* con el ID [1860](https://grafana.com/grafana/dashboards/1860-node-exporter-full/) ("Node Exporter Full"), datasource `Prometheus`, *Job* `node`, *Nodename* `kennels-host`.
 
+**Validación realizada** (2026-10-20, Docker Desktop sobre Windows): los 6 contenedores del stack de observabilidad en `running`; `up{job="node"}` = 1 y `node_uname_info` con `nodename="kennels-host"`. En Docker Desktop hubo que quitar la propagación `rslave` del montaje de `/`, porque la VM no monta `/` como *shared/slave* (`path / is mounted on / but it is not a shared or slave mount`). Como el exporter solo lee el sistema de ficheros, un montaje de solo lectura normal es suficiente.
+
+Dashboard importado (ID 1860) con datos reales, capturado durante el test de carga de K6:
+
 ![Dashboard Node Exporter Full con métricas del host](./img/node-exporter-dashboard.png)
+
+**Lectura de la captura:**
+
+- **CPU**: en reposo, el uso está por debajo del 20 %. Al lanzar K6 (hacia las 17:21) sube a ~80 % (*CPU Busy* 81.5 %) y la carga del sistema llega al 201 % (*Sys Load*), es decir, unos 2 procesos esperando por cada uno de los 2 cores. El host está saturado de CPU durante la prueba.
+- **Memoria**: la RAM usada llega al 82.5 % de 2 GiB y el swap al 99.9 %. La VM de Docker Desktop tiene poca memoria para todo el stack (aplicación + LGTM + K6), lo que también contribuye a la latencia observada en el load testing.
+- **Pressure (PSI)**: CPU, memoria e I/O rondan el 40–46 %, lo que confirma que hay contención de recursos durante la prueba.
+- **Red**: solo aparecen `eth0` y `lo` del contenedor, como se esperaba por la limitación descrita (el exporter no usa `network_mode: host`).
+- **Root FS Used / RootFS Total = N/A**: en Docker Desktop, la raíz de la VM (WSL) no aparece como `mountpoint="/"`, sino como montajes de la distro (`/mnt/host/wslg/distro`, `/parent-distro`, `/mnt/docker-desktop-disk`…), que sí se ven en *Disk Space Used Basic*. En un host Linux nativo estos paneles mostrarían datos.
 
 ## Reto 2 — blackbox-exporter y sondas HTTP
 
@@ -96,4 +108,4 @@ Dashboard importado (ID [16124](https://grafana.com/grafana/dashboards/16124-bla
 
 ## Pendiente
 
-- **Reto 1**: configuración desplegada. Falta validar con Docker, importar el dashboard 1860 y añadir la captura `img/node-exporter-dashboard.png`.
+- Nada pendiente: todos los apartados entregables y los dos retos están completados.
