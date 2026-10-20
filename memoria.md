@@ -13,7 +13,7 @@ Este laboratorio practica la observabilidad distribuida con el stack `LGTM` de G
 | Instrumentación OpenTelemetry (`kennels` / `dogs` / `inventory`) | ✅ Completo | Autoinstrumentación con `@opentelemetry/auto-instrumentations-node`; trazas visibles en Tempo; service graph muestra `kennels → dogs` y `kennels → inventory` |
 | Captura de la traza de error de `dogs` (punto 2.12, entregable) | ✅ Entregado | Ver capturas más abajo |
 | Load testing con K6 (puntos 3.1-3.3) | ✅ Completo | Ver análisis y datos más abajo |
-| Reto 1 — `node_exporter` + dashboard "Node Exporter Full" | ⏳ Pendiente | — |
+| Reto 1 — `node_exporter` + dashboard "Node Exporter Full" | 🔄 Configurado, pendiente de captura | Ver detalle más abajo |
 | Reto 2 — `blackbox-exporter` + dashboard de sondas HTTP | ✅ Completo | Ver detalle más abajo |
 
 ## Instrumentación y traza de error (puntos 2.9 – 2.12)
@@ -55,6 +55,30 @@ Comparando la latencia p95 por servicio (`histogram_quantile(0.95, traces_servic
 
 La p95 de `kennels` (379 ms) es casi exactamente la **suma** de las p95 de `inventory` y `dogs` (195 + 181 ≈ 376 ms), no el máximo de ambas. El motivo está en `services/kennels/src/data.js`: `kennels` primero hace `await getInventory(id)` y **solo después** lanza en paralelo (`Promise.all`) las llamadas a `getDogDetails` por cada perro. Como la llamada a `inventory` bloquea el inicio de las llamadas a `dogs`, la latencia total es aproximadamente aditiva en vez de estar acotada por el servicio más lento. **El cuello de botella es esta orquestación secuencial en `kennels`**, no el rendimiento individual de `dogs` o `inventory` — lanzar ambas llamadas en paralelo reduciría la p95 de ~380 ms a ~195 ms.
 
+## Reto 1 — node_exporter y dashboard Node Exporter Full
+
+**Decisión de diseño.** El enunciado ofrece dos opciones: desplegar `node_exporter` como contenedor o usar el exporter integrado de Alloy (`prometheus.exporter.unix`). Se eligió el **contenedor oficial** (`prom/node-exporter:v1.9.1`) por tres motivos: sigue el mismo patrón que `blackbox-exporter` (un exporter por servicio, scrapeado por Prometheus); mantiene Alloy centrado en su función de colector OTLP de trazas, sin mezclar responsabilidades; y la configuración de scraping queda en un único sitio (`obs/prometheus.yml`), lo que facilita depurar desde *Status → Targets*.
+
+**Despliegue** (`docker-compose.obs.yml`, red `kennels_net`):
+
+- El `/proc`, el `/sys` y la raíz `/` del host se montan en **solo lectura** dentro del contenedor (`/host/proc`, `/host/sys`, `/rootfs`) y se indican a `node_exporter` con `--path.procfs`, `--path.sysfs` y `--path.rootfs`. Así, las métricas de CPU, memoria, carga, disco y sistemas de ficheros describen el **host** y no el contenedor.
+- `pid: host` para ver los procesos del host.
+- Se excluyen del collector de filesystems los pseudo-sistemas de ficheros (`/sys`, `/proc`, `/dev`, `/host`, `/etc`), para no ensuciar los paneles de disco.
+- `hostname: kennels-host`, para que el dashboard muestre un *Nodename* legible en lugar del ID del contenedor.
+- **Limitación conocida:** el exporter se mantiene en `kennels_net` (sin `network_mode: host`) para que Prometheus lo alcance por nombre de servicio. Por eso las métricas de interfaces de red son las del *namespace* de red del contenedor. En Docker Desktop (Windows/macOS), el "host" es la VM Linux de Docker y no la máquina física.
+
+**Scraping** (`obs/prometheus.yml`): nuevo job `node` contra `node-exporter:9100`, cada 15 s, con la etiqueta `cluster="docker-compose"`, igual que las sondas del reto 2.
+
+**Validación** en *Explore → Prometheus*:
+
+- `up{job="node"}` = 1: Prometheus scrapea el exporter.
+- `node_uname_info{job="node"}`: una serie con `nodename="kennels-host"`.
+- `100 * (1 - avg(rate(node_cpu_seconds_total{job="node",mode="idle"}[1m])))`: % de CPU del host. Sube de forma visible al lanzar el test de carga de K6.
+
+**Dashboard**: importado desde *Dashboards → New → Import* con el ID [1860](https://grafana.com/grafana/dashboards/1860-node-exporter-full/) ("Node Exporter Full"), datasource `Prometheus`, *Job* `node`, *Nodename* `kennels-host`.
+
+![Dashboard Node Exporter Full con métricas del host](./img/node-exporter-dashboard.png)
+
 ## Reto 2 — blackbox-exporter y sondas HTTP
 
 Se añadió `blackbox-exporter` (`quay.io/prometheus/blackbox-exporter:v0.27.0`) al stack de observabilidad (`docker-compose.obs.yml`, red `kennels_net`), con el módulo `http_2xx` definido en `obs/blackbox.yml` (GET, timeout 5s, redirects habilitados). Para que Prometheus pudiera scrapearlo hizo falta crear `obs/prometheus.yml` (hasta entonces Prometheus corría sin `scrape_configs` propios, solo con `remote_write` desde Tempo) y montarlo en el servicio `prometheus`, con el job `blackbox` apuntando, vía *relabeling*, a:
@@ -72,4 +96,4 @@ Dashboard importado (ID [16124](https://grafana.com/grafana/dashboards/16124-bla
 
 ## Pendiente
 
-- **Reto 1**: desplegar `node_exporter` (o el exporter integrado de Alloy) y el dashboard "Node Exporter Full" (ID 1860), con captura de pantalla. Queda para quien lo implemente.
+- **Reto 1**: configuración desplegada. Falta validar con Docker, importar el dashboard 1860 y añadir la captura `img/node-exporter-dashboard.png`.
