@@ -1,4 +1,4 @@
-# Memoria Laboratori 8.5 - Distributed Tracing
+# Memoria Laboratorio 8.5 - Distributed Tracing
 
 ## ¿De qué trata este laboratorio?
 
