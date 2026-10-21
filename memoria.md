@@ -106,6 +106,4 @@ Dashboard importado (ID [16124](https://grafana.com/grafana/dashboards/16124-bla
 
 ![Dashboard de Blackbox Exporter con ambos targets Up](./img/blackbox-dashboard.jpg)
 
-## Pendiente
 
-- Nada pendiente: todos los apartados entregables y los dos retos están completados.
